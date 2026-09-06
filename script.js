@@ -2,12 +2,12 @@
         const ADMIN_PASSWORD_CORRECT = "amgstock"; // Kata sandi khusus login admin
         let isAdminLoggedIn = false;
 
-        // INITIAL DATA STATE
-        let categories = JSON.parse(localStorage.getItem('inv_categories')) || [
+        // DATA DEFAULT (dipakai sebagai seed awal jika server belum punya data tersimpan)
+        let categories = [
             'Kertas & Dokumen', 'Alat Tulis', 'Tinta & Toner', 'Peralatan Kantor', 'Elektronik & Baterai'
         ];
 
-        let inventory = JSON.parse(localStorage.getItem('inv_items')) || [
+        let inventory = [
             { id: 1, name: 'Kertas HVS A4 80gr', category: 'Kertas & Dokumen', stock: 12, unit: 'Rim', lastRestock: '2026-08-01 10:30' },
             { id: 2, name: 'Pulpen Gel Hitam 0.5mm', category: 'Alat Tulis', stock: 15, unit: 'Box', lastRestock: '2026-08-05 14:15' },
             { id: 3, name: 'Toner Printer HP LaserJet', category: 'Tinta & Toner', stock: 2, unit: 'Pcs', lastRestock: '2026-07-20 09:00' },
@@ -16,35 +16,61 @@
             { id: 6, name: 'Stapler Heavy Duty', category: 'Peralatan Kantor', stock: 8, unit: 'Pcs', lastRestock: '2026-08-06 08:30' }
         ];
 
-        let globalLastRestock = localStorage.getItem('inv_global_last_restock') || '2026-08-06 08:30';
+        let globalLastRestock = '2026-08-06 08:30';
 
-        let withdrawalHistory = JSON.parse(localStorage.getItem('inv_withdrawals')) || [
+        let withdrawalHistory = [
             { id: 101, date: '2026-08-07', item: 'Pulpen Gel Hitam 0.5mm', qty: 2, name: 'Budi Santoso', dept: 'HRD', note: 'Keperluan Onboarding Staff Baru' },
             { id: 102, date: '2026-08-06', item: 'Kertas HVS A4 80gr', qty: 1, name: 'Siti Rahma', dept: 'Keuangan', note: 'Cetak Laporan Bulanan' }
         ];
 
-        let restockHistory = JSON.parse(localStorage.getItem('inv_restock_history')) || [
+        let restockHistory = [
             { id: 201, datetime: '2026-08-06 08:30', item: 'Stapler Heavy Duty', qty: 5, note: 'Pembelian Rutin Bulanan' },
             { id: 202, datetime: '2026-08-05 14:15', item: 'Pulpen Gel Hitam 0.5mm', qty: 10, note: 'Restock Gudang Utama' }
         ];
 
         let selectedCategoryFilter = 'All';
 
-        function saveData() {
-            localStorage.setItem('inv_categories', JSON.stringify(categories));
-            localStorage.setItem('inv_items', JSON.stringify(inventory));
-            localStorage.setItem('inv_withdrawals', JSON.stringify(withdrawalHistory));
-            localStorage.setItem('inv_restock_history', JSON.stringify(restockHistory));
-            localStorage.setItem('inv_global_last_restock', globalLastRestock);
+        // --- SINKRONISASI DATA TERPUSAT (Cloudflare KV lewat Worker API) ---
+        // Semua device/browser sekarang membaca & menulis ke server yang sama,
+        // bukan localStorage yang terpisah per-device.
+        async function loadStateFromServer() {
+            try {
+                const res = await fetch('/api/state');
+                const data = await res.json();
+                if (data) {
+                    categories = data.categories || categories;
+                    inventory = data.inventory || inventory;
+                    withdrawalHistory = data.withdrawalHistory || withdrawalHistory;
+                    restockHistory = data.restockHistory || restockHistory;
+                    globalLastRestock = data.globalLastRestock || globalLastRestock;
+                }
+            } catch (err) {
+                console.error('Gagal memuat data dari server, memakai data default sementara.', err);
+                showToast('Gagal terhubung ke server data!', 'error');
+            }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        function saveData() {
+            const payload = { categories, inventory, withdrawalHistory, restockHistory, globalLastRestock };
+            fetch('/api/state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(err => {
+                console.error('Gagal menyimpan data ke server', err);
+                showToast('Gagal menyimpan perubahan ke server! Cek koneksi internet.', 'error');
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('user-input-date').value = today;
             
             const now = new Date();
             const localDatetime = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
             document.getElementById('restock-input-date').value = localDatetime;
+
+            await loadStateFromServer();
 
             addWithdrawalRow();
             renderAll();
