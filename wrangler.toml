@@ -1,5 +1,11 @@
-name = 'amgstock2026'
+name = "amgstock2026"
+main = "worker.js"
 compatibility_date = "2025-01-01"
 
 [assets]
 directory = "."
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "INV_KV"
+id = "e90c19e4f06d4583ac611a363bf81265"
